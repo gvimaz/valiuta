@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Memecoin Simulatorius</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial; margin: 20px; }
+input, button { margin: 5px; padding: 5px; }
+.box { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; }
+.coin-box { border: 1px solid #888; padding: 10px; margin:10px; display:inline-block; width:300px; vertical-align:top; }
+</style>
+</head>
+<body>
+
+<h2>🚀 Memecoin Simulatorius</h2>
+
+<div class="box">
+<h3>Prisijungimas</h3>
+<input type="text" id="username" placeholder="Vardas">
+<button onclick="login()">Prisijungti / Registruotis</button>
+<p>Bendrai investavusių žmonių: <span id="total-users">0</span></p>
+</div>
+
+<div id="dashboard" style="display:none;">
+
+<h3>Sveiki, <span id="user-name"></span>!</h3>
+<p>USD Balansas: $<span id="usd-balance"></span></p>
+
+<h3>Memecoinai:</h3>
+<div id="coins-container"></div>
+
+<h3>Transakcijų istorija</h3>
+<ul id="transactions"></ul>
+
+</div>
+
+<script>
+// Vartotojai
+let users = [];
+let currentUser = null;
+
+// Transakcijos
+let transactions = [];
+
+// Memecoinai
+let coins = [
+    {name:"GvidaCoin", price:1, history:[1], chart:null, userCoins:0},
+    {name:"MemeCoin", price:0.5, history:[0.5], chart:null, userCoins:0},
+    {name:"FunnyCoin", price:2, history:[2], chart:null, userCoins:0}
+];
+
+// Prisijungimas
+function login(){
+    let name = document.getElementById("username").value.trim();
+    if(name==="") return alert("Įveskite vardą");
+
+    let user = users.find(u => u.name===name);
+    if(!user){
+        user = {name:name, usd:1000, coins:{}};
+        coins.forEach(c=>user.coins[c.name]=0);
+        users.push(user);
+        alert("Naujas vartotojas su $1000");
+        document.getElementById("total-users").innerText = users.length;
+    }
+    currentUser = user;
+    document.getElementById("user-name").innerText = currentUser.name;
+    updateDashboard();
+    document.getElementById("dashboard").style.display = "block";
+}
+
+// Investavimas
+function invest(coinName){
+    let amountStr = prompt(`Kiek USD investuoti į ${coinName}?`);
+    let amount = parseFloat(amountStr);
+    if(!amount || amount<=0) return;
+    if(amount>currentUser.usd) return alert("Nepakanka USD balanso");
+
+    let coin = coins.find(c=>c.name===coinName);
+    let coinsBought = amount / coin.price;
+    currentUser.usd -= amount;
+    currentUser.coins[coinName] += coinsBought;
+    coin.userCoins += coinsBought; // Pridedame prie visų investuotų coinų
+
+    transactions.push({user:currentUser.name, action:`Investavo į ${coinName}`, amount:coinsBought.toFixed(2), date:new Date().toLocaleTimeString()});
+    updateDashboard();
+}
+
+// Pardavimas
+function sell(coinName){
+    let amountStr = prompt(`Kiek ${coinName} parduoti?`);
+    let amount = parseFloat(amountStr);
+    if(!amount || amount<=0) return;
+    if(currentUser.coins[coinName] < amount) return alert("Nepakankamai memecoinų");
+
+    let coin = coins.find(c=>c.name===coinName);
+    let amountUSD = amount * coin.price;
+    currentUser.coins[coinName] -= amount;
+    currentUser.usd += amountUSD;
+
+    transactions.push({user:currentUser.name, action:`Pardavė ${amount} ${coinName}`, amount:amountUSD.toFixed(2) + " USD", date:new Date().toLocaleTimeString()});
+    updateDashboard();
+}
+
+// Dashboard atnaujinimas
+function updateDashboard(){
+    document.getElementById("usd-balance").innerText = currentUser.usd.toFixed(2);
+
+    // Coins container
+    let container = document.getElementById("coins-container");
+    container.innerHTML = "";
+    coins.forEach(c=>{
+        let div = document.createElement("div");
+        div.className = "coin-box";
+        div.innerHTML = `<h4>${c.name}</h4>
+                         <p>Kaina: $${c.price.toFixed(2)}</p>
+                         <p>Tavo balans: ${currentUser.coins[c.name].toFixed(2)}</p>
+                         <p>Įsigyta: ${c.userCoins.toFixed(2)} ${c.name}</p>
+                         <button onclick="invest('${c.name}')">Investuoti</button>
+                         <button onclick="sell('${c.name}')">Parduoti</button>
+                         <canvas id="chart-${c.name}" width="250" height="150"></canvas>`;
+        container.appendChild(div);
+
+        // Chart
+        if(!c.chart){
+            let ctx = document.getElementById(`chart-${c.name}`).getContext('2d');
+            c.chart = new Chart(ctx, {
+                type:'line',
+                data:{
+                    labels:[new Date().toLocaleTimeString()],
+                    datasets:[{label:`${c.name} kaina $`, data:[c.price], borderColor:'blue', tension:0.2}]
+                },
+                options:{scales:{y:{beginAtZero:true}}}
+            });
+        }
+    });
+
+    // Transactions
+    let list = document.getElementById("transactions");
+    list.innerHTML="";
+    transactions.forEach(t=>{
+        list.innerHTML+=`<li>${t.user} ${t.action} ${t.amount} (${t.date})</li>`;
+    });
+}
+
+// Kainos keičiasi kas 3 sekundes
+setInterval(()=>{
+    coins.forEach(c=>{
+        let change = (Math.random()*0.1 - 0.05); // -5% iki +5%
+        c.price *= (1+change);
+        c.price = parseFloat(c.price.toFixed(2));
+        c.history.push(c.price);
+        if(c.history.length>20) c.history.shift();
+
+        if(c.chart){
+            let chart = c.chart;
+            chart.data.labels = Array(c.history.length).fill().map((_,i)=>new Date().toLocaleTimeString());
+            chart.data.datasets[0].data = c.history;
+            chart.update();
+        }
+    });
+    updateDashboard();
+},3000);
+</script>
+
+</body>
+</html>
